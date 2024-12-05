@@ -26,6 +26,10 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class OrderService {
+    public static final String IT_IS_NOT_POSSIBLE_TO_CHANGE_TO_PENDING = "It is not possible to change to PENDING.";
+    public static final String THE_ORDER_MUST_CONTAIN_AT_LEAST_ONE_PRODUCT = "The order must contain at least one product.";
+    public static final String ONLY_PENDING_ORDERS_CAN_BE_MARKED_AS_COMPLETED = "Only PENDING orders can be marked as COMPLETED.";
+    public static final String ORDER_NOT_FOUND = "Order not found: %s";
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final RabbitTemplate rabbitTemplate;
@@ -36,25 +40,14 @@ public class OrderService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private void validateStock(List<Product> products) {
-        for (Product product : products) {
-            Product storedProduct = productRepository.findById(product.getId())
-                    .orElseThrow(() -> new OrderException("Produto não encontrado: " + product.getId()));
-            if (storedProduct.getQuantity() < product.getQuantity()) {
-                throw new OrderException("Estoque insuficiente para o produto: " + product.getName());
-            }
-            // Deduzir o estoque.
-            storedProduct.setQuantity(storedProduct.getQuantity() - product.getQuantity());
-            productRepository.save(storedProduct);
-        }
-    }
-
     private String generateExternalId() {
         return "ORD-" + System.currentTimeMillis();
     }
 
     public Order createOrder(Order order) {
-         //validateStock(order.getProducts());
+        if (order.getProducts() == null || order.getProducts().isEmpty()) {
+            throw new IllegalArgumentException(THE_ORDER_MUST_CONTAIN_AT_LEAST_ONE_PRODUCT);
+        }
 
         BigDecimal totalAmount = calculateOrderTotal(order);
         order.setTotalAmount(totalAmount);
@@ -73,14 +66,14 @@ public class OrderService {
     @Transactional
     public Order updateOrderStatus(String externalId, OrderDto dto) {
         Order order = orderRepository.findOrderByIdAndExternalId(dto.getId(), externalId)
-                .orElseThrow(() -> new OrderException("Pedido não encontrado: " + dto.getId()));
+                .orElseThrow(() -> new OrderException(String.format(ORDER_NOT_FOUND, dto.getId())));
 
         if (!order.getStatus().equals(OrderStatus.PENDING) && dto.getStatus().equals(OrderStatus.COMPLETED)) {
-            throw new OrderException("Somente pedidos PENDING podem ser marcados como COMPLETED.");
+            throw new OrderException(ONLY_PENDING_ORDERS_CAN_BE_MARKED_AS_COMPLETED);
         }
 
         if (dto.getStatus().equals(OrderStatus.PENDING)) {
-            throw new OrderException("Não é possível alterar para PENDING.");
+            throw new OrderException(IT_IS_NOT_POSSIBLE_TO_CHANGE_TO_PENDING);
         }
 
         order.setStatus(dto.getStatus());
