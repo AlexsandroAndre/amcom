@@ -2,6 +2,7 @@ package com.orders.amcom.controller;
 
 import com.orders.amcom.dto.OrderDto;
 import com.orders.amcom.enums.OrderStatus;
+import com.orders.amcom.exception.OrderNotFoundException;
 import com.orders.amcom.model.Order;
 import com.orders.amcom.service.OrderService;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,9 @@ public class OrderController {
     @PutMapping("/{externalId}/status")
     public ResponseEntity<OrderDto> updateOrderStatus(@PathVariable String externalId, @RequestBody OrderDto dto) {
         Order savedOrder = orderService.updateOrderStatus(externalId, dto);
+        if (savedOrder == null) {
+            throw new OrderNotFoundException("Order with externalId " + externalId + " not found");
+        }
         return ResponseEntity.ok(OrderDto.fromEntity(savedOrder));
     }
 
@@ -50,6 +54,9 @@ public class OrderController {
         @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
         Pageable pageable) {
         Page<Order> orders = orderService.getAllOrders(status, startDate, endDate, pageable);
+        if(orders == null || orders.isEmpty()){
+            return ResponseEntity.ok().body(Page.empty());
+        }
         Page<OrderDto> orderDtos = orders.map(OrderDto::fromEntity);
         return ResponseEntity.ok(orderDtos);
     }
